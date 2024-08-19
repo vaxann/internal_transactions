@@ -1,0 +1,63 @@
+#include "imports/stdlib.fc";
+
+int get_smc_balance() method_id {
+    [int balance, _] = get_balance();
+
+    return balance;
+}
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) {
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+
+    if(in_msg_body.slice_empty?()) {
+        return ();
+    }
+
+    int op = in_msg_body~load_uint(32);  
+
+    if(op == "deposit"c) {
+        return ();
+    }
+
+    if(op == "withdraw"c) {
+        int withdraw_amount = in_msg_body~load_coins();
+        slice target_address = in_msg_body~load_msg_addr();
+
+        throw_unless(412, get_smc_balance() >= withdraw_amount);
+
+        cell msg = begin_cell()
+                .store_uint(0x10, 6) ;; nobounceable - 0x10
+                .store_slice(target_address)
+                .store_coins(withdraw_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .end_cell();
+        send_raw_message(msg, 3);
+
+        return ();
+    }
+
+    if(op == "withdraw_with_bounce"c) {
+        int withdraw_amount = in_msg_body~load_coins();
+        slice target_address = in_msg_body~load_msg_addr();
+
+        throw_unless(412, get_smc_balance() >= withdraw_amount);
+
+
+        cell msg = begin_cell()
+                .store_uint(0x18, 6) ;; bounceable - 0x18
+                .store_slice(target_address)
+                .store_coins(withdraw_amount)
+                .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+            .end_cell();
+        send_raw_message(msg, 3);
+
+        return ();
+    }
+
+    throw(0xffffff);
+}
